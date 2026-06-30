@@ -1,5 +1,5 @@
 {
-  "name": "Momentum – Premarket watchlist (12:00 BST)",
+  "name": "Momentum – Premarket watchlist (09:00 BST)",
   "nodes": [
     {
       "parameters": {
@@ -7,7 +7,7 @@
           "interval": [
             {
               "field": "cronExpression",
-              "expression": "0 12 * * 1-5"
+              "expression": "0 9 * * 1-5"
             }
           ]
         }

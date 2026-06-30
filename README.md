@@ -4,7 +4,7 @@ Three scheduled email digests for US small-cap momentum day trading, built for *
 
 | Workflow | File | Schedule (BST) | Cron |
 |---|---|---|---|
-| Premarket watchlist | `workflows/premarket-watchlist.json` | 12:00 | `0 12 * * 1-5` |
+| Premarket watchlist | `workflows/premarket-watchlist.json` | 09:00 | `0 9 * * 1-5` |
 | Final premarket brief | `workflows/final-premarket-brief.json` | 14:15 | `15 14 * * 1-5` |
 | Evening debrief + after-hours | `workflows/evening-debrief.json` | 21:00 | `0 21 * * 1-5` |
 

@@ -1,0 +1,282 @@
+{
+  "name": "Momentum – Final premarket brief (14:15 BST)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "15 14 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "schedule-node",
+      "name": "Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        60,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://www.alphavantage.co/query",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "function",
+              "value": "TOP_GAINERS_LOSERS"
+            }
+          ]
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "options": {}
+      },
+      "id": "av-movers-node",
+      "name": "Get AV movers",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        280,
+        300
+      ],
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "REPLACE_ME_ALPHAVANTAGE",
+          "name": "Alpha Vantage API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// No network calls here — Code node on n8n Cloud cannot reach the internet.\n// Parses the Alpha Vantage movers response already fetched by \"Get AV movers\".\nconst data = $input.first().json;\nconst pool = [...(data.top_gainers || []), ...(data.most_actively_traded || [])];\nconst symbols = [...new Set(pool.map(x => x.ticker))].slice(0, 25);\nif (!symbols.length) return [{ json: {} }];\nreturn symbols.map(symbol => ({ json: { symbol } }));\n"
+      },
+      "id": "extract-candidates-node",
+      "name": "Extract candidates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        500,
+        300
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "url": "https://finnhub.io/api/v1/quote",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "symbol",
+              "value": "={{ $json.symbol }}"
+            }
+          ]
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "options": {}
+      },
+      "id": "finnhub-quote-node",
+      "name": "Get quote",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        300
+      ],
+      "continueOnFail": true,
+      "alwaysOutputData": true,
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "REPLACE_ME_FINNHUB",
+          "name": "Finnhub API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// No network calls here — filtering only.\nconst MIN_GAP     = 5;    // minimum gap % vs previous close\nconst PRICE_MIN   = 2;\nconst PRICE_MAX   = 20;\nconst MAX_RESULTS = 10;\n\nconst items = $input.all();\nconst rows = [];\nitems.forEach((item, idx) => {\n  let symbol;\n  try {\n    symbol = $('Extract candidates').itemMatching(idx).json.symbol;\n  } catch (e) {\n    return;\n  }\n  const q = item.json;\n  if (!symbol || !q || !q.c || !q.pc) return;\n  const gap = ((q.c - q.pc) / q.pc) * 100;\n  if (gap >= MIN_GAP && q.c >= PRICE_MIN && q.c <= PRICE_MAX) {\n    rows.push({ symbol, price: q.c, prevClose: q.pc, gap, dayHigh: q.h || 0 });\n  }\n});\nrows.sort((a, b) => b.gap - a.gap);\nconst top = rows.slice(0, MAX_RESULTS);\nif (!top.length) return [{ json: {} }];\nreturn top.map(r => ({ json: r }));\n"
+      },
+      "id": "filter-gappers-node",
+      "name": "Filter gappers",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        940,
+        300
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "url": "https://finnhub.io/api/v1/company-news",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "symbol",
+              "value": "={{ $json.symbol }}"
+            },
+            {
+              "name": "from",
+              "value": "={{ $now.format('yyyy-MM-dd') }}"
+            },
+            {
+              "name": "to",
+              "value": "={{ $now.format('yyyy-MM-dd') }}"
+            }
+          ]
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "options": {}
+      },
+      "id": "finnhub-news-node",
+      "name": "Get news",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1160,
+        300
+      ],
+      "continueOnFail": true,
+      "alwaysOutputData": true,
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "REPLACE_ME_FINNHUB",
+          "name": "Finnhub API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// No network calls here — formatting only.\nconst MIN_GAP   = 5;\nconst PRICE_MIN = 2;\nconst PRICE_MAX = 20;\n\nconst newsItems = $input.all();\nconst firstHeadlineByIndex = {};\nfor (const item of newsItems) {\n  const pi = item.pairedItem;\n  const idx = Array.isArray(pi) ? pi[0].item : (pi ? pi.item : undefined);\n  if (idx === undefined || idx in firstHeadlineByIndex) continue;\n  const body = item.json;\n  const headline = Array.isArray(body) ? (body[0] && body[0].headline) : body && body.headline;\n  firstHeadlineByIndex[idx] = headline || null;\n}\n\nconst top = $('Filter gappers').all()\n  .map((item, idx) => ({ ...item.json, catalyst: firstHeadlineByIndex[idx] || '— no fresh headline —' }))\n  .filter(r => r.symbol);\n\nconst dateLabel = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });\nlet html = `<h2 style=\"font-family:monospace\">Final premarket brief \\u2014 ${dateLabel}</h2>`;\n\nif (!top.length) {\n  html += `<p style=\"font-family:monospace\">No qualifying gappers (gap \\u2265 ${MIN_GAP}%, $${PRICE_MIN}\\u2013$${PRICE_MAX}). Stay flat until a setup appears.</p>`;\n} else {\n  html += `<table cellpadding=\"8\" style=\"border-collapse:collapse;font-family:monospace\">\n    <tr style=\"text-align:left;border-bottom:1px solid #444\">\n      <th>Ticker</th><th>Gap</th><th>Price</th><th>High</th><th>Catalyst</th></tr>`;\n  for (const r of top) {\n    html += `<tr style=\"border-bottom:1px solid #222\">\n      <td><b>${r.symbol}</b></td>\n      <td style=\"color:#16c784\">+${r.gap.toFixed(1)}%</td>\n      <td>$${r.price.toFixed(2)}</td>\n      <td>$${(r.dayHigh||0).toFixed(2)}</td>\n      <td>${r.catalyst}</td></tr>`;\n  }\n  html += `</table>`;\n}\nhtml += `<p style=\"font-family:monospace;color:#888;margin-top:16px\">Rules: catalyst required \\u00b7 check float on the scanner \\u00b7 mental stop before entry \\u00b7 1% risk \\u00b7 focus window 14:30\\u201316:30 BST.</p>`;\nreturn [{ json: { subject: `Final premarket brief \\u2014 ${dateLabel}`, html } }];\n"
+      },
+      "id": "build-email-node",
+      "name": "Build email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1380,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "sendTo": "YOU@EXAMPLE.COM",
+        "subject": "={{ $json.subject }}",
+        "emailType": "html",
+        "message": "={{ $json.html }}",
+        "options": {}
+      },
+      "id": "gmail-node",
+      "name": "Send email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1600,
+        300
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_ME",
+          "name": "Gmail account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule": {
+      "main": [
+        [
+          {
+            "node": "Get AV movers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get AV movers": {
+      "main": [
+        [
+          {
+            "node": "Extract candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract candidates": {
+      "main": [
+        [
+          {
+            "node": "Get quote",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get quote": {
+      "main": [
+        [
+          {
+            "node": "Filter gappers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter gappers": {
+      "main": [
+        [
+          {
+            "node": "Get news",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get news": {
+      "main": [
+        [
+          {
+            "node": "Build email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build email": {
+      "main": [
+        [
+          {
+            "node": "Send email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "timezone": "Europe/London"
+  },
+  "pinData": {}
+}

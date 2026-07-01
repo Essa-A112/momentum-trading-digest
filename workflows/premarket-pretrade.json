@@ -1,5 +1,5 @@
 {
-  "name": "Momentum – Premarket watchlist (09:00 BST)",
+  "name": "Momentum – Premarket watchlist (pre-trade) (13:00 BST)",
   "nodes": [
     {
       "parameters": {
@@ -7,12 +7,12 @@
           "interval": [
             {
               "field": "cronExpression",
-              "expression": "0 9 * * 1-5"
+              "expression": "0 13 * * 1-5"
             }
           ]
         }
       },
-      "id": "f5d6849d-c8e0-4c59-bd07-43a97d0ae4e8",
+      "id": "5b0494a6-d74c-4f05-9177-98d06f235532",
       "name": "Schedule",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.3,
@@ -29,7 +29,7 @@
         "genericAuthType": "httpQueryAuth",
         "options": {}
       },
-      "id": "1b5e6dcc-c775-4cd7-a6a0-de235bd161e6",
+      "id": "b820411e-1963-4d9e-bebd-0a708375ddbc",
       "name": "Get FMP Movers",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
@@ -47,7 +47,7 @@
         "mode": "runOnceForAllItems",
         "jsCode": "// No network calls here - parses the FMP gainers response.\n// FMP's stable/biggest-gainers endpoint returns a flat JSON array, which the\n// HTTP Request node splits into one item per element.\nconst rows = $input.all().map(i => i.json).filter(x => x && x.symbol);\nrows.sort((a, b) => (b.changesPercentage || 0) - (a.changesPercentage || 0));\nconst symbols = [...new Set(rows.map(x => x.symbol))].slice(0, 25);\nreturn symbols.map(symbol => ({ json: { symbol } }));\n"
       },
-      "id": "0f7c70a7-143c-4429-9776-0c861f649793",
+      "id": "56690574-0240-4108-ac24-38b1d443be51",
       "name": "Extract Candidates",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -67,7 +67,7 @@
         "genericAuthType": "httpQueryAuth",
         "options": {}
       },
-      "id": "b7f3b188-fa0f-48f5-9997-7a79ee4fc956",
+      "id": "67e7f50d-ec08-409e-817c-52beba6c11ac",
       "name": "Get Quote",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
@@ -85,7 +85,7 @@
         "mode": "runOnceForAllItems",
         "jsCode": "// No network calls here - filtering only.\nconst MIN_GAP     = 5;\nconst PRICE_MIN   = 2;\nconst PRICE_MAX   = 20;\nconst MAX_RESULTS = 10;\n\nconst items = $input.all();\nconst rows = [];\nitems.forEach((item, idx) => {\n  let symbol;\n  try {\n    symbol = $('Extract Candidates').itemMatching(idx).json.symbol;\n  } catch (e) {\n    return;\n  }\n  const q = item.json;\n  if (!symbol || !q || !q.c || !q.pc) return;\n  const gap = ((q.c - q.pc) / q.pc) * 100;\n  if (gap >= MIN_GAP && q.c >= PRICE_MIN && q.c <= PRICE_MAX) {\n    rows.push({ symbol, price: q.c, prevClose: q.pc, gap, dayHigh: q.h || 0 });\n  }\n});\nrows.sort((a, b) => b.gap - a.gap);\nconst top = rows.slice(0, MAX_RESULTS);\nreturn top.map(r => ({ json: r }));\n"
       },
-      "id": "9e0284cc-33f1-4dda-944c-288dd685fd1f",
+      "id": "4cd00877-1094-406c-b80b-4f587faeb970",
       "name": "Filter Gappers",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -105,7 +105,7 @@
           "combinator": "and"
         }
       },
-      "id": "74b48ff9-6ee9-4676-8635-8eea27ba5af5",
+      "id": "29eebd0d-6359-4bf7-89a5-a73c4766369f",
       "name": "Has Gappers?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
@@ -128,7 +128,7 @@
         "genericAuthType": "httpQueryAuth",
         "options": {}
       },
-      "id": "94c8c2c0-456b-4b0a-a6c2-578a1140cb7c",
+      "id": "0555edbc-12f1-46b0-bf35-8548ff9720ca",
       "name": "Get News",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
@@ -144,9 +144,9 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// No network calls here - formatting only.\nconst newsItems = $input.all();\nconst firstHeadlineByIndex = {};\nfor (const item of newsItems) {\n  const pi = item.pairedItem;\n  const idx = Array.isArray(pi) ? pi[0].item : (pi ? pi.item : undefined);\n  if (idx === undefined || idx in firstHeadlineByIndex) continue;\n  const body = item.json;\n  const headline = Array.isArray(body) ? (body[0] && body[0].headline) : (body && body.headline);\n  firstHeadlineByIndex[idx] = headline || null;\n}\n\nconst top = $('Filter Gappers').all()\n  .map((item, idx) => ({ ...item.json, catalyst: firstHeadlineByIndex[idx] || '— no fresh headline —' }))\n  .filter(r => r.symbol);\n\nconst dateLabel = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });\nlet html = `<h2 style=\"font-family:monospace\">Premarket watchlist — ${dateLabel}</h2>`;\nhtml += `<table cellpadding=\"8\" style=\"border-collapse:collapse;font-family:monospace\">\n  <tr style=\"text-align:left;border-bottom:1px solid #444\">\n    <th>Ticker</th><th>Gap</th><th>Price</th><th>High</th><th>Catalyst</th></tr>`;\nfor (const r of top) {\n  html += `<tr style=\"border-bottom:1px solid #222\">\n    <td><b>${r.symbol}</b></td>\n    <td style=\"color:#16c784\">+${r.gap.toFixed(1)}%</td>\n    <td>$${r.price.toFixed(2)}</td>\n    <td>$${(r.dayHigh||0).toFixed(2)}</td>\n    <td>${r.catalyst}</td></tr>`;\n}\nhtml += `</table>`;\nhtml += `<p style=\"font-family:monospace;color:#888;margin-top:16px\">Rules: catalyst required · check float on the scanner · mental stop before entry · 1% risk · focus window 14:30–16:30 BST.</p>`;\nreturn [{ json: { subject: `Premarket watchlist — ${dateLabel}`, html } }];\n"
+        "jsCode": "// No network calls here - formatting only.\nconst newsItems = $input.all();\nconst firstHeadlineByIndex = {};\nfor (const item of newsItems) {\n  const pi = item.pairedItem;\n  const idx = Array.isArray(pi) ? pi[0].item : (pi ? pi.item : undefined);\n  if (idx === undefined || idx in firstHeadlineByIndex) continue;\n  const body = item.json;\n  const headline = Array.isArray(body) ? (body[0] && body[0].headline) : (body && body.headline);\n  firstHeadlineByIndex[idx] = headline || null;\n}\n\nconst top = $('Filter Gappers').all()\n  .map((item, idx) => ({ ...item.json, catalyst: firstHeadlineByIndex[idx] || '— no fresh headline —' }))\n  .filter(r => r.symbol);\n\nconst over10 = top.filter(r => r.gap >= 10).length;\nconst over5 = top.filter(r => r.gap >= 5).length;\nconst maxGap = top.length ? Math.max(...top.map(r => r.gap)) : 0;\nlet verdict;\nif (over5 === 0) {\n  verdict = 'Quiet premarket — sit on your hands.';\n} else {\n  verdict = `Active premarket — ${over5} names >5%, ${over10} >10%.`;\n}\nconst summaryBlock = `<div style=\"font-family:monospace;border:1px solid #444;padding:12px;margin-bottom:16px\"><b>${verdict}</b><br>Max gap: +${maxGap.toFixed(1)}%</div>`;\n\nconst dateLabel = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });\nlet html = `<h2 style=\"font-family:monospace\">Premarket watchlist (pre-trade) — ${dateLabel}</h2>`;\nhtml += summaryBlock;\nhtml += `<table cellpadding=\"8\" style=\"border-collapse:collapse;font-family:monospace\">\n  <tr style=\"text-align:left;border-bottom:1px solid #444\">\n    <th>Ticker</th><th>Gap</th><th>Price</th><th>High</th><th>Catalyst</th></tr>`;\nfor (const r of top) {\n  html += `<tr style=\"border-bottom:1px solid #222\">\n    <td><b>${r.symbol}</b></td>\n    <td style=\"color:#16c784\">+${r.gap.toFixed(1)}%</td>\n    <td>$${r.price.toFixed(2)}</td>\n    <td>$${(r.dayHigh||0).toFixed(2)}</td>\n    <td>${r.catalyst}</td></tr>`;\n}\nhtml += `</table>`;\nhtml += `<p style=\"font-family:monospace;color:#888;margin-top:16px\">Focus window 13:00–16:00 BST (flex ±30 min on volume) · catalyst required · mental stop before entry · 1% risk · 2:1 R/R min · -3R daily max.</p>`;\nreturn [{ json: { subject: `Premarket watchlist (pre-trade) — ${dateLabel}`, html } }];\n"
       },
-      "id": "a84680d1-bcdd-48ec-b1cb-b22c0a85bc8a",
+      "id": "1a9287e4-7d50-41eb-98bb-876f75e42ccc",
       "name": "Build Watchlist Email",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -162,7 +162,7 @@
         "message": "={{ $json.html }}",
         "options": {}
       },
-      "id": "4064e866-b92c-4ea1-9449-0d7b48ca7e94",
+      "id": "1c3b61df-3ae0-433e-af4e-f96b69a3d83e",
       "name": "Send Email",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.2,
@@ -177,9 +177,9 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// No network calls here - formatting only.\nconst dateLabel = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });\nconst html = `<h2 style=\"font-family:monospace\">Premarket watchlist — ${dateLabel}</h2>\n<p style=\"font-family:monospace\">No qualifying gappers (gap ≥ 5%, $2–$20) — or movers data was unavailable this run. Stay flat until a setup appears.</p>\n<p style=\"font-family:monospace;color:#888;margin-top:16px\">Rules: catalyst required · check float on the scanner · mental stop before entry · 1% risk · focus window 14:30–16:30 BST.</p>`;\nreturn [{ json: { subject: `Premarket watchlist — ${dateLabel}`, html } }];\n"
+        "jsCode": "// No network calls here - formatting only.\nconst dateLabel = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });\nconst html = `<h2 style=\"font-family:monospace\">Premarket watchlist (pre-trade) — ${dateLabel}</h2>\n<div style=\"font-family:monospace;border:1px solid #444;padding:12px;margin-bottom:16px\"><b>Quiet premarket — sit on your hands.</b></div>\n<p style=\"font-family:monospace\">No qualifying gappers (gap ≥ 5%, $2–$20) — or movers data was unavailable this run. Stay flat until a setup appears.</p>\n<p style=\"font-family:monospace;color:#888;margin-top:16px\">Focus window 13:00–16:00 BST (flex ±30 min on volume) · catalyst required · mental stop before entry · 1% risk · 2:1 R/R min · -3R daily max.</p>`;\nreturn [{ json: { subject: `Premarket watchlist (pre-trade) — ${dateLabel}`, html } }];\n"
       },
-      "id": "0165764e-f4a0-4a37-a523-352c4cb7b4d3",
+      "id": "1955a25b-38b2-421d-8b73-1cedc25b13ff",
       "name": "Build Stay Flat Email",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,

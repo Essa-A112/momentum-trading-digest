@@ -12,87 +12,67 @@
           ]
         }
       },
-      "id": "schedule-node",
+      "id": "0be0ba24-bd5b-45ed-9d6a-712b9eea287c",
       "name": "Schedule",
       "type": "n8n-nodes-base.scheduleTrigger",
-      "typeVersion": 1.2,
-      "position": [
-        60,
-        300
-      ]
+      "typeVersion": 1.3,
+      "position": [0, 96]
     },
     {
       "parameters": {
-        "url": "https://www.alphavantage.co/query",
+        "method": "GET",
+        "url": "https://financialmodelingprep.com/stable/biggest-gainers",
         "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "function",
-              "value": "TOP_GAINERS_LOSERS"
-            }
-          ]
-        },
+        "specifyQuery": "keypair",
+        "queryParameters": { "parameters": [] },
         "authentication": "genericCredentialType",
         "genericAuthType": "httpQueryAuth",
         "options": {}
       },
-      "id": "av-movers-node",
-      "name": "Get AV movers",
+      "id": "1a9266e0-cab8-43cc-bcdb-33fedd55415c",
+      "name": "Get FMP Movers",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        280,
-        300
-      ],
+      "typeVersion": 4.4,
+      "position": [224, 96],
+      "onError": "continueRegularOutput",
       "credentials": {
         "httpQueryAuth": {
-          "id": "REPLACE_ME_ALPHAVANTAGE",
-          "name": "Alpha Vantage API"
+          "id": "REPLACE_ME_FMP",
+          "name": "FMP API"
         }
       }
     },
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// No network calls here — Code node on n8n Cloud cannot reach the internet.\n// Parses the Alpha Vantage movers response already fetched by \"Get AV movers\".\nconst data = $input.first().json;\nconst pool = [...(data.top_gainers || []), ...(data.most_actively_traded || [])];\nconst symbols = [...new Set(pool.map(x => x.ticker))].slice(0, 25);\nif (!symbols.length) return [{ json: {} }];\nreturn symbols.map(symbol => ({ json: { symbol } }));\n"
+        "jsCode": "// No network calls here - parses the FMP gainers response.\n// FMP's stable/biggest-gainers endpoint returns a flat JSON array, which the\n// HTTP Request node splits into one item per element.\nconst rows = $input.all().map(i => i.json).filter(x => x && x.symbol);\nrows.sort((a, b) => (b.changesPercentage || 0) - (a.changesPercentage || 0));\nconst symbols = [...new Set(rows.map(x => x.symbol))].slice(0, 25);\nreturn symbols.map(symbol => ({ json: { symbol } }));\n"
       },
-      "id": "extract-candidates-node",
-      "name": "Extract candidates",
+      "id": "c97aaa35-f98e-4f7a-aab4-1584d82573c9",
+      "name": "Extract Candidates",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        500,
-        300
-      ],
+      "position": [448, 96],
       "alwaysOutputData": true
     },
     {
       "parameters": {
+        "method": "GET",
         "url": "https://finnhub.io/api/v1/quote",
         "sendQuery": true,
+        "specifyQuery": "keypair",
         "queryParameters": {
-          "parameters": [
-            {
-              "name": "symbol",
-              "value": "={{ $json.symbol }}"
-            }
-          ]
+          "parameters": [{ "name": "symbol", "value": "={{ $json.symbol }}" }]
         },
         "authentication": "genericCredentialType",
         "genericAuthType": "httpQueryAuth",
         "options": {}
       },
-      "id": "finnhub-quote-node",
-      "name": "Get quote",
+      "id": "0f7f85a9-1b93-48a1-a2a7-432dc60f80ec",
+      "name": "Get Quote",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        720,
-        300
-      ],
-      "continueOnFail": true,
-      "alwaysOutputData": true,
+      "typeVersion": 4.4,
+      "position": [672, 96],
+      "onError": "continueRegularOutput",
       "credentials": {
         "httpQueryAuth": {
           "id": "REPLACE_ME_FINNHUB",
@@ -103,52 +83,57 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// No network calls here — filtering only.\nconst MIN_GAP     = 5;    // minimum gap % vs previous close\nconst PRICE_MIN   = 2;\nconst PRICE_MAX   = 20;\nconst MAX_RESULTS = 10;\n\nconst items = $input.all();\nconst rows = [];\nitems.forEach((item, idx) => {\n  let symbol;\n  try {\n    symbol = $('Extract candidates').itemMatching(idx).json.symbol;\n  } catch (e) {\n    return;\n  }\n  const q = item.json;\n  if (!symbol || !q || !q.c || !q.pc) return;\n  const gap = ((q.c - q.pc) / q.pc) * 100;\n  if (gap >= MIN_GAP && q.c >= PRICE_MIN && q.c <= PRICE_MAX) {\n    rows.push({ symbol, price: q.c, prevClose: q.pc, gap, dayHigh: q.h || 0 });\n  }\n});\nrows.sort((a, b) => b.gap - a.gap);\nconst top = rows.slice(0, MAX_RESULTS);\nif (!top.length) return [{ json: {} }];\nreturn top.map(r => ({ json: r }));\n"
+        "jsCode": "// No network calls here - filtering only.\nconst MIN_GAP     = 5;\nconst PRICE_MIN   = 2;\nconst PRICE_MAX   = 20;\nconst MAX_RESULTS = 10;\n\nconst items = $input.all();\nconst rows = [];\nitems.forEach((item, idx) => {\n  let symbol;\n  try {\n    symbol = $('Extract Candidates').itemMatching(idx).json.symbol;\n  } catch (e) {\n    return;\n  }\n  const q = item.json;\n  if (!symbol || !q || !q.c || !q.pc) return;\n  const gap = ((q.c - q.pc) / q.pc) * 100;\n  if (gap >= MIN_GAP && q.c >= PRICE_MIN && q.c <= PRICE_MAX) {\n    rows.push({ symbol, price: q.c, prevClose: q.pc, gap, dayHigh: q.h || 0 });\n  }\n});\nrows.sort((a, b) => b.gap - a.gap);\nconst top = rows.slice(0, MAX_RESULTS);\nreturn top.map(r => ({ json: r }));\n"
       },
-      "id": "filter-gappers-node",
-      "name": "Filter gappers",
+      "id": "05317ced-4dac-4ea2-8e37-1d5f448b07ca",
+      "name": "Filter Gappers",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        940,
-        300
-      ],
+      "position": [896, 96],
       "alwaysOutputData": true
     },
     {
       "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.symbol }}",
+              "operator": { "type": "string", "operation": "notEmpty" }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "c89e08c6-4226-44b2-8918-b8b5a58d888a",
+      "name": "Has Gappers?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1120, 96]
+    },
+    {
+      "parameters": {
+        "method": "GET",
         "url": "https://finnhub.io/api/v1/company-news",
         "sendQuery": true,
+        "specifyQuery": "keypair",
         "queryParameters": {
           "parameters": [
-            {
-              "name": "symbol",
-              "value": "={{ $json.symbol }}"
-            },
-            {
-              "name": "from",
-              "value": "={{ $now.format('yyyy-MM-dd') }}"
-            },
-            {
-              "name": "to",
-              "value": "={{ $now.format('yyyy-MM-dd') }}"
-            }
+            { "name": "symbol", "value": "={{ $json.symbol }}" },
+            { "name": "from", "value": "={{ $now.toFormat('yyyy-MM-dd') }}" },
+            { "name": "to", "value": "={{ $now.toFormat('yyyy-MM-dd') }}" }
           ]
         },
         "authentication": "genericCredentialType",
         "genericAuthType": "httpQueryAuth",
         "options": {}
       },
-      "id": "finnhub-news-node",
-      "name": "Get news",
+      "id": "61dbfdb0-fe18-4c36-aea7-15c87b7b3225",
+      "name": "Get News",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1160,
-        300
-      ],
-      "continueOnFail": true,
-      "alwaysOutputData": true,
+      "typeVersion": 4.4,
+      "position": [1344, 0],
+      "onError": "continueRegularOutput",
       "credentials": {
         "httpQueryAuth": {
           "id": "REPLACE_ME_FINNHUB",
@@ -159,19 +144,17 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// No network calls here — formatting only.\nconst MIN_GAP   = 5;\nconst PRICE_MIN = 2;\nconst PRICE_MAX = 20;\n\nconst newsItems = $input.all();\nconst firstHeadlineByIndex = {};\nfor (const item of newsItems) {\n  const pi = item.pairedItem;\n  const idx = Array.isArray(pi) ? pi[0].item : (pi ? pi.item : undefined);\n  if (idx === undefined || idx in firstHeadlineByIndex) continue;\n  const body = item.json;\n  const headline = Array.isArray(body) ? (body[0] && body[0].headline) : body && body.headline;\n  firstHeadlineByIndex[idx] = headline || null;\n}\n\nconst top = $('Filter gappers').all()\n  .map((item, idx) => ({ ...item.json, catalyst: firstHeadlineByIndex[idx] || '— no fresh headline —' }))\n  .filter(r => r.symbol);\n\nconst dateLabel = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });\nlet html = `<h2 style=\"font-family:monospace\">Evening debrief + after-hours \\u2014 ${dateLabel}</h2>`;\nhtml += `<div style=\"font-family:monospace;border:1px solid #444;padding:12px;margin-bottom:16px\">\n<b>Journal today's trades</b> (Commandment 04 \\u2014 data is the only edge you keep):<br>\nticker \\u00b7 entry \\u00b7 exit \\u00b7 R outcome \\u00b7 what worked \\u00b7 what you broke<br>\n<a href=\"YOUR_GOOGLE_SHEET_URL\">\\u2192 Open trade log</a></div><h3 style=\"font-family:monospace\">After-hours watchlist (tomorrow's levels)</h3>`;\n\nif (!top.length) {\n  html += `<p style=\"font-family:monospace\">No qualifying gappers (gap \\u2265 ${MIN_GAP}%, $${PRICE_MIN}\\u2013$${PRICE_MAX}). Stay flat until a setup appears.</p>`;\n} else {\n  html += `<table cellpadding=\"8\" style=\"border-collapse:collapse;font-family:monospace\">\n    <tr style=\"text-align:left;border-bottom:1px solid #444\">\n      <th>Ticker</th><th>Gap</th><th>Price</th><th>High</th><th>Catalyst</th></tr>`;\n  for (const r of top) {\n    html += `<tr style=\"border-bottom:1px solid #222\">\n      <td><b>${r.symbol}</b></td>\n      <td style=\"color:#16c784\">+${r.gap.toFixed(1)}%</td>\n      <td>$${r.price.toFixed(2)}</td>\n      <td>$${(r.dayHigh||0).toFixed(2)}</td>\n      <td>${r.catalyst}</td></tr>`;\n  }\n  html += `</table>`;\n}\nhtml += `<p style=\"font-family:monospace;color:#888;margin-top:16px\">Rules: catalyst required \\u00b7 check float on the scanner \\u00b7 mental stop before entry \\u00b7 1% risk \\u00b7 focus window 14:30\\u201316:30 BST.</p>`;\nreturn [{ json: { subject: `Evening debrief + after-hours \\u2014 ${dateLabel}`, html } }];\n"
+        "jsCode": "// No network calls here - formatting only.\nconst newsItems = $input.all();\nconst firstHeadlineByIndex = {};\nfor (const item of newsItems) {\n  const pi = item.pairedItem;\n  const idx = Array.isArray(pi) ? pi[0].item : (pi ? pi.item : undefined);\n  if (idx === undefined || idx in firstHeadlineByIndex) continue;\n  const body = item.json;\n  const headline = Array.isArray(body) ? (body[0] && body[0].headline) : (body && body.headline);\n  firstHeadlineByIndex[idx] = headline || null;\n}\n\nconst top = $('Filter Gappers').all()\n  .map((item, idx) => ({ ...item.json, catalyst: firstHeadlineByIndex[idx] || '— no fresh headline —' }))\n  .filter(r => r.symbol);\n\nconst journalBlock = '<div style=\"font-family:monospace;border:1px solid #444;padding:12px;margin-bottom:16px\"><b>Journal today\\'s trades</b> (data is the only edge you keep):<br>ticker · entry · exit · R outcome · what worked · what you broke<br><a href=\"YOUR_GOOGLE_SHEET_URL\">→ Open trade log</a></div><h3 style=\"font-family:monospace\">After-hours watchlist (tomorrow\\'s levels)</h3>';\n\nconst dateLabel = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });\nlet html = `<h2 style=\"font-family:monospace\">Evening debrief + after-hours — ${dateLabel}</h2>`;\nhtml += journalBlock;\nhtml += `<table cellpadding=\"8\" style=\"border-collapse:collapse;font-family:monospace\">\n  <tr style=\"text-align:left;border-bottom:1px solid #444\">\n    <th>Ticker</th><th>Gap</th><th>Price</th><th>High</th><th>Catalyst</th></tr>`;\nfor (const r of top) {\n  html += `<tr style=\"border-bottom:1px solid #222\">\n    <td><b>${r.symbol}</b></td>\n    <td style=\"color:#16c784\">+${r.gap.toFixed(1)}%</td>\n    <td>$${r.price.toFixed(2)}</td>\n    <td>$${(r.dayHigh||0).toFixed(2)}</td>\n    <td>${r.catalyst}</td></tr>`;\n}\nhtml += `</table>`;\nhtml += `<p style=\"font-family:monospace;color:#888;margin-top:16px\">Rules: catalyst required · check float on the scanner · mental stop before entry · 1% risk · focus window 14:30–16:30 BST.</p>`;\nreturn [{ json: { subject: `Evening debrief + after-hours — ${dateLabel}`, html } }];\n"
       },
-      "id": "build-email-node",
-      "name": "Build email",
+      "id": "dfa70812-4581-40a8-9b63-3af0efe39e3e",
+      "name": "Build Watchlist Email",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        1380,
-        300
-      ]
+      "position": [1568, 0]
     },
     {
       "parameters": {
+        "resource": "message",
         "operation": "send",
         "sendTo": "YOU@EXAMPLE.COM",
         "subject": "={{ $json.subject }}",
@@ -179,104 +162,50 @@
         "message": "={{ $json.html }}",
         "options": {}
       },
-      "id": "gmail-node",
-      "name": "Send email",
+      "id": "6e446106-463c-4a82-9b07-bec75ba3ecef",
+      "name": "Send Email",
       "type": "n8n-nodes-base.gmail",
-      "typeVersion": 2.1,
-      "position": [
-        1600,
-        300
-      ],
+      "typeVersion": 2.2,
+      "position": [1792, 96],
       "credentials": {
         "gmailOAuth2": {
-          "id": "REPLACE_ME",
+          "id": "REPLACE_ME_GMAIL",
           "name": "Gmail account"
         }
       }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// No network calls here - formatting only.\nconst journalBlock = '<div style=\"font-family:monospace;border:1px solid #444;padding:12px;margin-bottom:16px\"><b>Journal today\\'s trades</b> (data is the only edge you keep):<br>ticker · entry · exit · R outcome · what worked · what you broke<br><a href=\"YOUR_GOOGLE_SHEET_URL\">→ Open trade log</a></div><h3 style=\"font-family:monospace\">After-hours watchlist (tomorrow\\'s levels)</h3>';\n\nconst dateLabel = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });\nconst html = `<h2 style=\"font-family:monospace\">Evening debrief + after-hours — ${dateLabel}</h2>${journalBlock}\n<p style=\"font-family:monospace\">No qualifying gappers (gap ≥ 5%, $2–$20) — or movers data was unavailable this run. Stay flat until a setup appears.</p>\n<p style=\"font-family:monospace;color:#888;margin-top:16px\">Rules: catalyst required · check float on the scanner · mental stop before entry · 1% risk · focus window 14:30–16:30 BST.</p>`;\nreturn [{ json: { subject: `Evening debrief + after-hours — ${dateLabel}`, html } }];\n"
+      },
+      "id": "04424f84-cabf-43f5-abe1-c075ae49b4da",
+      "name": "Build Stay Flat Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1568, 192]
     }
   ],
   "connections": {
-    "Schedule": {
+    "Schedule": { "main": [[{ "node": "Get FMP Movers", "type": "main", "index": 0 }]] },
+    "Get FMP Movers": { "main": [[{ "node": "Extract Candidates", "type": "main", "index": 0 }]] },
+    "Extract Candidates": { "main": [[{ "node": "Get Quote", "type": "main", "index": 0 }]] },
+    "Get Quote": { "main": [[{ "node": "Filter Gappers", "type": "main", "index": 0 }]] },
+    "Filter Gappers": { "main": [[{ "node": "Has Gappers?", "type": "main", "index": 0 }]] },
+    "Has Gappers?": {
       "main": [
-        [
-          {
-            "node": "Get AV movers",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{ "node": "Get News", "type": "main", "index": 0 }],
+        [{ "node": "Build Stay Flat Email", "type": "main", "index": 0 }]
       ]
     },
-    "Get AV movers": {
-      "main": [
-        [
-          {
-            "node": "Extract candidates",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Extract candidates": {
-      "main": [
-        [
-          {
-            "node": "Get quote",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Get quote": {
-      "main": [
-        [
-          {
-            "node": "Filter gappers",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Filter gappers": {
-      "main": [
-        [
-          {
-            "node": "Get news",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Get news": {
-      "main": [
-        [
-          {
-            "node": "Build email",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Build email": {
-      "main": [
-        [
-          {
-            "node": "Send email",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    }
+    "Get News": { "main": [[{ "node": "Build Watchlist Email", "type": "main", "index": 0 }]] },
+    "Build Watchlist Email": { "main": [[{ "node": "Send Email", "type": "main", "index": 0 }]] },
+    "Build Stay Flat Email": { "main": [[{ "node": "Send Email", "type": "main", "index": 0 }]] }
   },
   "active": false,
   "settings": {
-    "timezone": "Europe/London"
+    "timezone": "Europe/London",
+    "executionOrder": "v1"
   },
   "pinData": {}
 }

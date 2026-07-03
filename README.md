@@ -4,22 +4,38 @@ Automated trading-intelligence emails per [PRD](./ARCHITECTURE.md#1-audit-of-the
 (see `ARCHITECTURE.md` for the audit and approved design). Phase 1: free API
 tiers, four scheduled emails per US trading weekday, zero manual triggering.
 
-**Status: 07:50 Premarket Brief built and in test. 03:50 / 09:20 / 16:10 to follow** —
-per the build plan, one working email before the next.
+**Status: 07:50, 09:20 and 16:10 built (inactive, pending go-live approval).
+Position tracking via email replies built. 03:50 comes last.**
 
 ## Workflows on the n8n instance
 
 | Workflow | ID | Role |
 |---|---|---|
-| `TRADE 07:50 – Premarket Brief` | `d6zBGWsfGGM1fHWU` | Main orchestrator (first email) |
-| `TRADE SUB – Market Gate` | `NuHBi32ah5TlEGI5` | Weekday + holiday/half-day check, ET slot window, run_log dedupe |
-| `TRADE SUB – Fetch Movers` | `60zaDamifwOEu5JX` | FMP gainers → universe filter → Finnhub quote + metric |
-| `TRADE SUB – Compute Levels` | `E3IcSgGjmmLrKDaZ` | Deterministic trigger/confirm/range/invalidation + OHLC series |
-| `TRADE SUB – Grade Candidate` | `omcQfCxd6DcZ61Vh` | Anthropic 5-factor 0–2 scoring → A/B/C in code |
+| `TRADE 07:50 – Premarket Brief` | `d6zBGWsfGGM1fHWU` | Gap list w/ grades+reasons, candidate cards, news, positions |
+| `TRADE 09:20 – Open Plan` | `Kt0DiUU7csAPGlDH` | Premarket recap vs 07:50 watchlist, A-list cards, EDGAR-backed avoid list, swing watch |
+| `TRADE 16:10 – Close Report` | `zeERtfVkvCYMBEIv` | Day recap (indices/sectors/movers), scorecard w/ outcome writeback, after-hours, swing cards, long book, Friday sections |
+| `TRADE Position Intake (email replies)` | `c5P5kL61g2ki1CNm` | Polls Gmail replies, Haiku parses buys/sells, writes positions (never guesses; flags unparseable) |
+| `TRADE SUB – Market Gate` | `NuHBi32ah5TlEGI5` | Weekday + holiday/half-day check, ET slot window (fail-closed), run_log dedupe |
+| `TRADE SUB – Fetch Movers` | `60zaDamifwOEu5JX` | FMP gainers → universe filter → Finnhub quote + metric → post-quote gap re-filter |
+| `TRADE SUB – Compute Levels` | `E3IcSgGjmmLrKDaZ` | Polygon daily+30min bars (15s pacing, retries), deterministic levels, quote-only fallback |
+| `TRADE SUB – Grade Candidate` | `omcQfCxd6DcZ61Vh` | Anthropic scores 0–2 or null per factor, code renormalizes to 0–10 → A/B/C/U |
 | `TRADE SUB – Render Charts` | `qqxEavKPwuZAUMGM` | QuickChart candlesticks with level annotations |
-| `TRADE SUB – News Since` | `E8aPRgsyBbq1tRFA` | Finnhub news, window filter, Anthropic classification |
-| `TRADE SUB – Compose + Send` | `wnj6cIAXy3HWXyUE` | Email shell, per-section degradation, Gmail, run_log |
+| `TRADE SUB – News Since` | `E8aPRgsyBbq1tRFA` | Finnhub news, signal filter, ticker validation, hyperlinks, Anthropic classification |
+| `TRADE SUB – Positions Section` | `9GERsQU80SaDguXd` | Per-email positions block: price vs entry, days held, deterministic swing verdicts |
+| `TRADE SUB – Compose + Send` | `wnj6cIAXy3HWXyUE` | Email shell + positions append, per-section degradation, Gmail, run_log |
 | `ZZ Probe – API checks (temp)` | `q259zw78c3J9djOQ` | Endpoint verification scratchpad — safe to delete |
+
+## Position tracking (reply to any digest)
+
+Reply to a digest email in free text — `bought SURG at 0.52, 2000 shares,
+swing` opens a tracked position (storing the matching call's levels and
+context as of that moment); `sold SURG at 1.10` closes it. Haiku parses the
+reply; anything ambiguous is **flagged in the next email, never guessed**.
+New positions print a "now tracking … reply if wrong" confirmation. Every
+email carries a Positions section: current price, % vs entry, days held, and
+a deterministic swing verdict (below the stored confirm level = EXIT SIGNAL).
+Long-horizon positions get Friday thesis re-grades (plumbing lands with the
+03:50 build). Intake polls Gmail every 30 minutes once activated.
 
 The three original `Momentum – *` workflows are superseded; they stay inactive
 until the new system has run clean for a few days, then get archived.

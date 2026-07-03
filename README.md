@@ -51,12 +51,13 @@ dedupe guarantees one send per slot per day even if both fires pass.
 - **QuickChart**: `POST /chart/create` works, candlestick + annotation verified.
 - **Anthropic**: `claude-sonnet-5` via the n8n Anthropic node. Note: passing
   `temperature: 0` makes the node emit a bad request — omit temperature.
-- **OHLC history (daily + 30-min intraday incl. premarket)**: pending a free
-  **Polygon.io** API key (5 calls/min free tier covers all US tickers and is
-  the PRD's phase-2 vendor — the paid upgrade is just a key swap). Until the
-  key exists, levels degrade to quote-only derivation (trigger = premarket
-  high from Finnhub quote, confirm = snapped prior close, range = +20% open
-  cap) and charts are suppressed.
+- **Polygon.io free tier** (added): daily + 30-min aggregates incl. premarket
+  for all US tickers power the level engine, RVOL, PM stats and charts. The
+  5-calls/min limit is respected with 15s Wait nodes before each Polygon call
+  in the levels sub (≈4 calls/min worst case) plus retry-on-429. If Polygon
+  fails, levels degrade to quote-only derivation (trigger = premarket high
+  from Finnhub quote, confirm = snapped prior close, range = +20% open cap)
+  and charts are suppressed — the email still sends.
 
 ## Context store (n8n data tables)
 
@@ -79,10 +80,27 @@ runs in the Compute Levels sub-workflow:
 
 ## Grading
 
-Anthropic scores five factors 0–2 (catalyst, RVOL, float/liquidity fit, level
-structure, dilution) with one-line reasons; code validates the JSON, sums, and
-maps 8–10→A, 6–7→B, <6→C (mention only). Catalyst 0 with RVOL <2 is capped at
-C. LLM failure degrades to C mention-only — the email still sends.
+Anthropic scores five factors (catalyst, RVOL, float/liquidity fit, level
+structure, dilution) with one-line reasons. Each factor is 0–2 **or null when
+its underlying data is missing** — missing data is never scored as 0. Code
+validates the JSON and renormalizes: score = sum over available factors scaled
+to 0–10; ≥8→A, ≥6→B, <6→C (mention only). Fewer than 3 available factors →
+**U (ungradeable)**, mention only. Catalyst 0 with RVOL <2 caps at C. LLM
+failure degrades to U — the email still sends. The email prints all five
+one-line reasons per graded name, in the gap list and on cards.
+
+The verdict box distinguishes three states and never presents a data failure
+as a trading call: **no trade** (graded, nothing reached B), **no qualifying
+gappers** (universe empty), and **data unavailable** (movers/enrichment/
+grading failed — amber box, explicitly "not a trading verdict").
+
+## Scheduling gate (verified 2026-07-03)
+
+Production fires are fail-closed: unknown execution modes are treated as
+production and must pass weekday + holiday + ±20-min ET window + run_log
+dedupe. A pinned-data production simulation on the observed Independence Day
+holiday was rejected on three independent grounds (holiday, window, mode).
+Manual runs always proceed (explicit human action = test send).
 
 ## Credentials in use
 

@@ -18,11 +18,11 @@ awaiting user review + activation.**
 | `TRADE 16:10 – Close Report` | `zeERtfVkvCYMBEIv` | Day recap (indices/sectors/movers), scorecard w/ outcome writeback, after-hours, swing cards, long book, Friday sections |
 | `TRADE Position Intake (email replies)` | `c5P5kL61g2ki1CNm` | Polls Gmail replies, Haiku parses buys/sells, writes positions (never guesses; flags unparseable) |
 | `TRADE SUB – Market Gate` | `NuHBi32ah5TlEGI5` | Weekday + holiday/half-day check, ET slot window (fail-closed), run_log dedupe |
-| `TRADE SUB – Fetch Movers` | `60zaDamifwOEu5JX` | FMP gainers → universe filter → Finnhub quote + metric → post-quote gap re-filter |
+| `TRADE SUB – Fetch Movers` | `60zaDamifwOEu5JX` | FMP gainers → universe filter (funds + non-common share classes excluded) → Finnhub quote + metric → post-quote gap re-filter |
 | `TRADE SUB – Compute Levels` | `E3IcSgGjmmLrKDaZ` | Polygon daily+30min bars (15s pacing, retries), deterministic levels, quote-only fallback |
 | `TRADE SUB – Grade Candidate` | `omcQfCxd6DcZ61Vh` | Anthropic scores 0–2 or null per factor, code renormalizes to 0–10 → A/B/C/U |
 | `TRADE SUB – Render Charts` | `qqxEavKPwuZAUMGM` | QuickChart candlesticks with level annotations |
-| `TRADE SUB – News Since` | `E8aPRgsyBbq1tRFA` | Finnhub news, signal filter, ticker validation, hyperlinks, Anthropic classification |
+| `TRADE SUB – News Since` | `E8aPRgsyBbq1tRFA` | Finnhub news, signal filter, ticker validation, hyperlinks, Anthropic classification, hardened catalyst attribution |
 | `TRADE SUB – Positions Section` | `9GERsQU80SaDguXd` | Per-email positions block: price vs entry, days held, deterministic swing verdicts |
 | `TRADE SUB – Compose + Send` | `wnj6cIAXy3HWXyUE` | Email shell + positions append, per-section degradation, Gmail, run_log |
 | `ZZ Probe – API checks (temp)` | `q259zw78c3J9djOQ` | Endpoint verification scratchpad — safe to delete |
@@ -127,6 +127,22 @@ The verdict box distinguishes three states and never presents a data failure
 as a trading call: **no trade** (graded, nothing reached B), **no qualifying
 gappers** (universe empty), and **data unavailable** (movers/enrichment/
 grading failed — amber box, explicitly "not a trading verdict").
+
+### Catalyst attribution (feeds grading — hardened 2026-07-05)
+
+Per-symbol catalyst headlines come from Finnhub company news. Finnhub's
+`related` tag indexes roundup listicles under every ticker they mention, which
+once rendered a SurgePays headline as DSY's "catalyst". The catalyst path now
+(a) only attributes to symbols the run actually queried, (b) dedupes per
+symbol+url instead of first-wins across symbols, and (c) drops listicle/
+roundup headlines ("Top movers…", "12 Health Care Stocks Moving…") by regex —
+deterministic rather than LLM-classified because catalystJson feeds the
+grading factor and must stay safe when the Anthropic call fails. A name with
+only listicle coverage renders "no clear catalyst identified" and its grading
+facts carry no headlines. The universe filter also excludes non-common share
+classes (rights/warrants/units/preferred, by security name and by symbol
+suffix), and the raw gainers/losers display lines in the 03:50/16:10 emails
+apply the same exclusion.
 
 ## Scheduling gate (verified 2026-07-03)
 

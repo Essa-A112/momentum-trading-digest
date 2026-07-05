@@ -4,13 +4,15 @@ Automated trading-intelligence emails per [PRD](./ARCHITECTURE.md#1-audit-of-the
 (see `ARCHITECTURE.md` for the audit and approved design). Phase 1: free API
 tiers, four scheduled emails per US trading weekday, zero manual triggering.
 
-**Status: 07:50, 09:20 and 16:10 built (inactive, pending go-live approval).
-Position tracking via email replies built. 03:50 comes last.**
+**Status: all four emails built. 07:50 / 09:20 / 16:10 / Position Intake
+activated by the user for go-live Mon 6 Jul 2026. 03:50 built and test-sent,
+awaiting user review + activation.**
 
 ## Workflows on the n8n instance
 
 | Workflow | ID | Role |
 |---|---|---|
+| `TRADE 03:50 – Overnight Brief` | `7p5QTGOkoDr7mdMd` | Prior-session recap, overnight tape (world indices/BTC/treasuries), earnings+IPO calendar, premarket watch (names only), long book, overnight news |
 | `TRADE 07:50 – Premarket Brief` | `d6zBGWsfGGM1fHWU` | Gap list w/ grades+reasons, candidate cards, news, positions |
 | `TRADE 09:20 – Open Plan` | `Kt0DiUU7csAPGlDH` | Premarket recap vs 07:50 watchlist, A-list cards, EDGAR-backed avoid list, swing watch |
 | `TRADE 16:10 – Close Report` | `zeERtfVkvCYMBEIv` | Day recap (indices/sectors/movers), scorecard w/ outcome writeback, after-hours, swing cards, long book, Friday sections |
@@ -50,7 +52,8 @@ Market Gate sub only lets the fire within ±20 minutes of the ET target proceed
 (production runs only; manual test runs skip the window check). A `run_log`
 dedupe guarantees one send per slot per day even if both fires pass.
 
-07:50 ET brief: `50 11 * * 1-5` and `50 12 * * 1-5` (Europe/London).
+03:50 → `50 7` + `50 8` · 07:50 → `50 11` + `50 12` · 09:20 → `20 13` +
+`20 14` · 16:10 → `10 20` + `10 21` (all `* * 1-5`, Europe/London).
 
 ## Data sources (phase 1, free) — and what we learned the hard way
 
@@ -61,7 +64,9 @@ dedupe guarantees one send per slot per day even if both fires pass.
   and macro data (~4 calls/day of the 250/day budget).
 - **Finnhub free tier**: quotes (all symbols — verified on live micro-cap
   gappers), `stock/metric` (10-day avg volume, market cap), company + general
-  news, market holidays. No hard daily cap. This carries most per-symbol load.
+  news, market holidays, earnings + IPO calendars (used by the 03:50 brief),
+  crypto quotes (`BINANCE:BTCUSDT` as the overnight risk proxy). No hard daily
+  cap. This carries most per-symbol load.
 - **Yahoo chart API**: 429-blocked from n8n Cloud's shared IPs. Dead end.
 - **Stooq**: serves a JavaScript anti-bot challenge to datacenter IPs. Dead end.
 - **QuickChart**: `POST /chart/create` works, candlestick + annotation verified.
@@ -80,7 +85,20 @@ dedupe guarantees one send per slot per day even if both fires pass.
 `api_cache` `DX4hYHnK0itEBzok` · `watchlist` `0DmgyeReARhBVIbM` · `calls`
 `xXUsSKUJSwGQpYcx` · `news_log` `5PKuOVnKdzIdiFYp` · `long_book`
 `Y0RpE6uOqsL1Aju2` · `congress_trades` `OiNedcvYkzQJ1Wnv` · `run_log`
-`3UGSUcR2CiON1iYu`
+`3UGSUcR2CiON1iYu` · `positions` `PVdNOs7jNw5insN5`
+
+## 03:50 Overnight Brief — what it does (and deliberately doesn't)
+
+Sections: prior US session (indices, sector rotation, gainers/losers with
+linked attribution), overnight tape (Nikkei/Hang Seng/FTSE/DAX via FMP, BTC
+via Finnhub as risk proxy, treasury 2Y/10Y/2s10s via FMP — labeled proxies,
+no free US-futures feed), today's earnings + IPO calendars (Finnhub; econ
+releases are phase 2), premarket watch (prior-close movers ∪ overnight news —
+**names only, explicitly NOT suggestions**; premarket opens 04:00 ET after
+this email's pull, so levels/RVOL/grades wait for 07:50), long book,
+congressional placeholder, overnight news since 16:10 (3-day lookback on
+Mondays), positions. No cards, no grades, no table writes — the 03:50 email
+is context, not calls.
 
 ## Level derivation (deterministic — the LLM never picks numbers)
 
@@ -120,5 +138,6 @@ Manual runs always proceed (explicit human action = test send).
 
 ## Credentials in use
 
-FMP API (query auth) · Finnhub API (query auth) · Gmail OAuth2 ·
-Anthropic API. Keys live only in n8n Cloud credentials, never in this repo.
+FMP API (query auth) · Finnhub API (query auth) · Polygon API (query auth) ·
+Gmail OAuth2 · Anthropic API. Keys live only in n8n Cloud credentials, never
+in this repo.

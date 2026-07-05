@@ -144,6 +144,16 @@ classes (rights/warrants/units/preferred, by security name and by symbol
 suffix), and the raw gainers/losers display lines in the 03:50/16:10 emails
 apply the same exclusion.
 
+Two delivery-layer safeguards (added after inspecting received messages, not
+compose output): the Compose + Send shell encodes `=` as `&#61;` inside every
+href/src so Gmail's quoted-printable transfer encoding can never consume
+`=hex` pairs in URLs (verified end-to-end by fetching the delivered message);
+and the 03:50 premarket watch checks each name's catalyst headlines for
+drop/reversal/offering language — flagged names are excluded from the subject
+line and tagged **[AH reversal reported]** instead of being presented as clean
+gainers (prior-close move data cannot see after-hours reversals in phase 1,
+but the headline text can).
+
 ## Scheduling gate (verified 2026-07-03)
 
 Production fires are fail-closed: unknown execution modes are treated as

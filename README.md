@@ -145,6 +145,17 @@ symbol suffix incl. the NASDAQ 5th-letter R/W/U/V codes), and the raw
 gainers/losers display lines in the 03:50/16:10 emails apply the same
 exclusion.
 
+**Zero-item chain death (root-caused live, 6 Jul):** an n8n HTTP node whose
+response is an empty JSON array outputs zero items, and every downstream node
+silently never runs — the execution still reports "success". This killed the
+first production 07:50: Finnhub company-news returned `[]` for the single
+candidate, News Since died at that node, and the send never happened. Every
+HTTP node that can return a bare empty array now has `alwaysOutputData`
+(News Since general+company news, Fetch Movers gainers, the 03:50/16:10
+index/sector/gainers/losers/treasury/calendar fetches); downstream code
+already filters empty items. The 09:20 recap path was already
+sentinel-protected.
+
 Two delivery-layer safeguards (added after inspecting received messages, not
 compose output): the Compose + Send shell encodes `=` as `&#61;` inside every
 href/src so Gmail's quoted-printable transfer encoding can never consume

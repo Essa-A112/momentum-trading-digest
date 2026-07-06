@@ -140,9 +140,10 @@ deterministic rather than LLM-classified because catalystJson feeds the
 grading factor and must stay safe when the Anthropic call fails. A name with
 only listicle coverage renders "no clear catalyst identified" and its grading
 facts carry no headlines. The universe filter also excludes non-common share
-classes (rights/warrants/units/preferred, by security name and by symbol
-suffix), and the raw gainers/losers display lines in the 03:50/16:10 emails
-apply the same exclusion.
+classes (rights/warrants/units/preferred/when-issued, by security name and by
+symbol suffix incl. the NASDAQ 5th-letter R/W/U/V codes), and the raw
+gainers/losers display lines in the 03:50/16:10 emails apply the same
+exclusion.
 
 Two delivery-layer safeguards (added after inspecting received messages, not
 compose output): the Compose + Send shell encodes `=` as `&#61;` inside every

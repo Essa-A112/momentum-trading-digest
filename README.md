@@ -7,7 +7,9 @@ tiers, four scheduled emails per US trading weekday, zero manual triggering.
 **Status: live. All five workflows published and running on schedule since
 Mon 6 Jul 2026 (first fully clean scheduled sends: 09:20 and 16:10 that day;
 03:50 and 07:50 recovered manually after a late activation and a zero-item
-bug respectively, both since fixed).**
+bug respectively, both since fixed). Tue 7 Jul: all slots fired and sent on
+schedule; a 10-item fix pass from Monday's live emails shipped the same
+morning — see "Premarket scan (Polygon)" and the hardening notes below.**
 
 ## Workflows on the n8n instance
 
@@ -19,7 +21,8 @@ bug respectively, both since fixed).**
 | `TRADE 16:10 – Close Report` | `zeERtfVkvCYMBEIv` | Day recap (indices/sectors/movers), scorecard w/ outcome writeback, after-hours, swing cards, long book, Friday sections |
 | `TRADE Position Intake (email replies)` | `c5P5kL61g2ki1CNm` | Polls Gmail replies, Haiku parses buys/sells, writes positions (never guesses; flags unparseable) |
 | `TRADE SUB – Market Gate` | `NuHBi32ah5TlEGI5` | Weekday + holiday/half-day check, ET slot window (fail-closed), run_log dedupe |
-| `TRADE SUB – Fetch Movers` | `60zaDamifwOEu5JX` | FMP gainers → universe filter (funds + non-common share classes excluded) → Finnhub quote + metric → post-quote gap re-filter |
+| `TRADE SUB – Fetch Movers` | `60zaDamifwOEu5JX` | FMP gainers → universe filter (funds + non-common share classes excluded) → Finnhub quote + metric → post-quote gap re-filter. Used by 03:50 recap and 16:10 swing scan |
+| `TRADE SUB – Premarket Scan` | `SrtFvpxJCEgWWUfv` | FMP gainers universe → Polygon same-day 5-min bars (PM high/low/vol, live gap vs Polygon prev close) → Finnhub metric → RVOL. Candidate source for 07:50 and 09:20 |
 | `TRADE SUB – Compute Levels` | `E3IcSgGjmmLrKDaZ` | Polygon daily+30min bars (15s pacing, retries), deterministic levels, quote-only fallback |
 | `TRADE SUB – Grade Candidate` | `omcQfCxd6DcZ61Vh` | Anthropic scores 0–2 or null per factor, code renormalizes to 0–10 → A/B/C/U |
 | `TRADE SUB – Render Charts` | `qqxEavKPwuZAUMGM` | QuickChart candlesticks with level annotations |
@@ -73,13 +76,23 @@ dedupe guarantees one send per slot per day even if both fires pass.
 - **QuickChart**: `POST /chart/create` works, candlestick + annotation verified.
 - **Anthropic**: `claude-sonnet-5` via the n8n Anthropic node. Note: passing
   `temperature: 0` makes the node emit a bad request — omit temperature.
-- **Polygon.io free tier** (added): daily + 30-min aggregates incl. premarket
-  for all US tickers power the level engine, RVOL, PM stats and charts. The
-  5-calls/min limit is respected with 15s Wait nodes before each Polygon call
-  in the levels sub (≈4 calls/min worst case) plus retry-on-429. If Polygon
-  fails, levels degrade to quote-only derivation (trigger = premarket high
-  from Finnhub quote, confirm = snapped prior close, range = +20% open cap)
-  and charts are suppressed — the email still sends.
+- **Polygon.io** (aggregates): daily + intraday aggregates incl. premarket
+  for all US tickers power the level engine, RVOL, PM stats and charts. If
+  Polygon fails, levels degrade to quote-only derivation (trigger = premarket
+  high from Finnhub quote, confirm = snapped prior close, range = +20% open
+  cap) and charts are suppressed — the email still sends.
+  **Starter-plan findings (7 Jul)**: the snapshot endpoints
+  (`/v2/snapshot/.../gainers`) return 403 NOT_AUTHORIZED on this key — no
+  full-market premarket movers scan, so the premarket scan keeps FMP's
+  gainers list as its universe and enriches it with Polygon aggregates. And
+  despite Starter advertising unlimited calls, the key rate-limited (429) a
+  burst of 16 concurrent aggregate calls in the first live scan — behavior
+  matching the free tier's 5 calls/min, worth checking on the Polygon
+  dashboard that the Starter subscription is attached to this exact key.
+  Every Polygon call is therefore throttled: scan HTTP nodes batch 1 request
+  / 13s with retry-on-fail, and the levels sub keeps its 15s Wait pacing
+  (reverted after a brief 1s experiment that starved 6 of 8 candidates of
+  levels on the first live run).
 
 ## Context store (n8n data tables)
 
@@ -101,6 +114,33 @@ congressional placeholder, overnight news since 16:10 (3-day lookback on
 Mondays), positions. No cards, no grades, no table writes — the 03:50 email
 is context, not calls.
 
+## Premarket scan (Polygon) — 07:50/09:20 candidate source (added 7 Jul)
+
+The 07:50 and 09:20 workflows source candidates from `TRADE SUB – Premarket
+Scan` instead of the quote-based Fetch Movers (which stays in place for the
+03:50 prior-session recap and the 16:10 swing scan). The scan takes FMP's
+biggest-gainers list, applies the shared universe filter (funds, non-common
+share classes, loose price band), takes the top 10, and pulls per-symbol
+Polygon same-day 5-minute bars (15-min delayed on Starter) plus the previous
+close: premarket high/low/volume, last premarket print, **live gap = (PM last
+− prev close)/prev close**, and RVOL = PM volume / Finnhub 10-day average.
+Every field falls back to the FMP listed values when a Polygon call fails, so
+the scan output contract is identical to Fetch Movers and the mains degrade
+rather than break. The 09:20 email leads with a premarket top-gainers table
+(ticker, gap, price, PM high/low/vol, RVOL, grade, linked catalyst), then the
+cards. Known limitation, deliberate: gappers with no prior-session move that
+only started running in premarket are invisible to FMP's list — fixing that
+needs the Polygon snapshot entitlement (plan upgrade).
+
+Two content rules shipped in the same pass: a candidate card whose last price
+is **below its confirm level is not an active setup** — it is excluded from
+the suggested set and, when shown for transparency, carries an amber
+INVALIDATED banner; and the 07:50 cards read like a curated daily watchlist
+(ticker + linked catalyst headline, "worth watching if price breaks above X
+and confirms above Y", range, chart pair) while 09:20 stays specific to
+gainers at the open. Factor reason lines print once per stock — on the card
+only; the gap list carries just the grade.
+
 ## Level derivation (deterministic — the LLM never picks numbers)
 
 Implemented and unit-tested in `src/levels.js` (13 assertions); the same code
@@ -121,7 +161,13 @@ its underlying data is missing** — missing data is never scored as 0. Code
 validates the JSON and renormalizes: score = sum over available factors scaled
 to 0–10; ≥8→A, ≥6→B, <6→C (mention only). Fewer than 3 available factors →
 **U (ungradeable)**, mention only. Catalyst 0 with RVOL <2 caps at C. LLM
-failure degrades to U — the email still sends. The email prints all five
+failure degrades to U — the email still sends. Two rules hardened 7 Jul:
+**dilution 2 requires an affirmative clean EDGAR check** (edgarFilings exactly
+0 and no dilution language) — an absent or failed EDGAR call is null, never a
+clean bill; and **catalyst freshness looks back 3–5 trading days** (2 =
+catalyst within 2 trading days, 1 = real catalyst 3–5 days old), instead of
+only since the last email. The context line always names the date of the
+original move, never today. The email prints all five
 one-line reasons per graded name, in the gap list and on cards.
 
 The verdict box distinguishes three states and never presents a data failure
@@ -136,7 +182,8 @@ Per-symbol catalyst headlines come from Finnhub company news. Finnhub's
 once rendered a SurgePays headline as DSY's "catalyst". The catalyst path now
 (a) only attributes to symbols the run actually queried, (b) dedupes per
 symbol+url instead of first-wins across symbols, and (c) drops listicle/
-roundup headlines ("Top movers…", "12 Health Care Stocks Moving…") by regex —
+roundup headlines ("Top movers…", "12 Health Care Stocks Moving…", and since
+7 Jul "Which stocks are experiencing notable movement…" variants) by regex —
 deterministic rather than LLM-classified because catalystJson feeds the
 grading factor and must stay safe when the Anthropic call fails. A name with
 only listicle coverage renders "no clear catalyst identified" and its grading
@@ -158,7 +205,15 @@ HTTP node that can return a bare empty array now has `alwaysOutputData`
 (News Since general+company news, Fetch Movers gainers, the 03:50/16:10
 index/sector/gainers/losers/treasury/calendar fetches); downstream code
 already filters empty items. The 09:20 recap path was already
-sentinel-protected.
+sentinel-protected. Extended 7 Jul: every non-gate Execute-Workflow node in
+all four mains also carries `alwaysOutputData` + continue-on-error, so a sub
+that dies or returns nothing degrades its section instead of killing the
+send (the gate stays strict/fail-closed). Verified by forced test: with a
+news sub sabotaged to return zero items, the 07:50 still sent with the news
+and gap sections marked unavailable and an amber non-verdict box. The
+Fetch Movers gap re-filter also stopped treating a stale Finnhub quote
+(current == previous close, i.e. no print this session) as a 0% gap — it
+keeps the FMP listed gap instead.
 
 Two delivery-layer safeguards (added after inspecting received messages, not
 compose output): the Compose + Send shell encodes `=` as `&#61;` inside every

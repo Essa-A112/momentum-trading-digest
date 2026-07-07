@@ -4,9 +4,10 @@ Automated trading-intelligence emails per [PRD](./ARCHITECTURE.md#1-audit-of-the
 (see `ARCHITECTURE.md` for the audit and approved design). Phase 1: free API
 tiers, four scheduled emails per US trading weekday, zero manual triggering.
 
-**Status: all four emails built. 07:50 / 09:20 / 16:10 / Position Intake
-activated by the user for go-live Mon 6 Jul 2026. 03:50 built and test-sent,
-awaiting user review + activation.**
+**Status: live. All five workflows published and running on schedule since
+Mon 6 Jul 2026 (first fully clean scheduled sends: 09:20 and 16:10 that day;
+03:50 and 07:50 recovered manually after a late activation and a zero-item
+bug respectively, both since fixed).**
 
 ## Workflows on the n8n instance
 
@@ -143,7 +144,10 @@ facts carry no headlines. The universe filter also excludes non-common share
 classes (rights/warrants/units/preferred/when-issued, by security name and by
 symbol suffix incl. the NASDAQ 5th-letter R/W/U/V codes), and the raw
 gainers/losers display lines in the 03:50/16:10 emails apply the same
-exclusion.
+exclusion. The display lines also drop moves >300% — FMP's pre-open Monday
+gainers list computes weekend reverse splits as +2000% "gains"; the candidate
+path was already immune because the movers sub re-checks gaps against live
+quotes.
 
 **Zero-item chain death (root-caused live, 6 Jul):** an n8n HTTP node whose
 response is an empty JSON array outputs zero items, and every downstream node

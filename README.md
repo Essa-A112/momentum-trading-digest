@@ -106,13 +106,24 @@ dedupe guarantees one send per slot per day even if both fires pass.
 Sections: prior US session (indices, sector rotation, gainers/losers with
 linked attribution), overnight tape (Nikkei/Hang Seng/FTSE/DAX via FMP, BTC
 via Finnhub as risk proxy, treasury 2Y/10Y/2s10s via FMP — labeled proxies,
-no free US-futures feed), today's earnings + IPO calendars (Finnhub; econ
-releases are phase 2), premarket watch (prior-close movers ∪ overnight news —
-**names only, explicitly NOT suggestions**; premarket opens 04:00 ET after
-this email's pull, so levels/RVOL/grades wait for 07:50), long book,
+no free US-futures feed), **after-hours movers** (see below), today's
+earnings + IPO calendars (Finnhub; econ releases are phase 2), long book,
 congressional placeholder, overnight news since 16:10 (3-day lookback on
 Mondays), positions. No cards, no grades, no table writes — the 03:50 email
 is context, not calls.
+
+**After-hours movers (reworked 7 Jul):** at 03:50 ET premarket has not opened
+(it starts 04:00 ET), so the overnight watch list can only legitimately come
+from the prior session's after-hours tape — the original "premarket watch"
+re-listed prior-session close moves with only a headline-text check for AH
+reversals. Now a scan universe (prior-session gappers ∪ yesterday's
+after-the-bell earnings reporters ∪ overnight news names, capped at 15) is
+priced off Polygon 5-min bars for the prior trading day: AH move = last
+16:00–20:00 ET print vs the ~16:00 close. Gainers ≥3% are ranked into the
+watch table (with AH volume, scan reason, linked catalyst); decliners ≤−3%
+print as an AH-reversal line — actual prices replacing the old headline
+regex. Names only, still not suggestions; nothing in the email is labeled
+premarket. The subject line's watch names come from real AH gainers.
 
 ## Premarket scan (Polygon) — 07:50/09:20 candidate source (added 7 Jul)
 

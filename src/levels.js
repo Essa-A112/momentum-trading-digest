@@ -70,6 +70,19 @@ function computeLevels(daily, intraday, todayET, quote) {
   for (const s of snaps) {
     if (s > 0 && s < trigger && Math.abs(s - confirm) / confirm <= 0.02) { confirm = s; break; }
   }
+  // confirm is the invalidation ("below this the card is dead") so it must sit
+  // BELOW the live price, else a normal pre-breakout name (price between confirm
+  // and trigger) gets mislabelled invalidated. Pull it to the best real support.
+  const livePrice = Number(q.price) > 0 ? Number(q.price) : null;
+  if (livePrice !== null && confirm >= livePrice) {
+    const opts = [pmLow, lastSession ? lastSession.close : null, r2(livePrice * 0.95)]
+      .filter((x) => x !== null && x > 0 && x < livePrice && x < trigger);
+    confirm = opts.length ? Math.max(...opts) : r2(livePrice * 0.95);
+    const s2 = [Math.round(confirm * 2) / 2, Math.round(confirm)];
+    for (const s of s2) {
+      if (s > 0 && s < trigger && Math.abs(s - confirm) / confirm <= 0.02) { confirm = s; break; }
+    }
+  }
 
   // ---- RANGE: nearest daily anchor above trigger ----
   // priority: daily 200MA, origin of most recent gap down, prior multi-day shelf
@@ -255,10 +268,11 @@ function check(name, cond, detail) {
   ]);
   const today = '2026-01-21';
   const noPmBars = []; // plan returns nothing for today
-  const lv = computeLevels(daily, noPmBars, today, { quoteHigh: 5.2, quoteLow: 4.3, isPremarket: true });
+  const lv = computeLevels(daily, noPmBars, today, { quoteHigh: 5.2, quoteLow: 4.3, isPremarket: true, price: 4.8 });
   check('c7 trigger=quote premarket high', lv.trigger === 5.2, JSON.stringify(lv));
   check('c7 trigger above prior high', lv.trigger > 3.0, JSON.stringify(lv));
   check('c7 confirm below trigger', lv.confirm < lv.trigger && lv.confirm > 0, JSON.stringify(lv));
+  check('c7 confirm below live price', lv.confirm < 4.8, JSON.stringify(lv));
   check('c7 dataQuality flagged', lv.dataQuality === 'bars+quote-pm', JSON.stringify(lv));
   // without the quote (or outside premarket) it falls back to the stale prior
   // session high (2.9) — far below the real premarket price, the bug we fixed

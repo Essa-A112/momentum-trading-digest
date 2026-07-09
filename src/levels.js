@@ -7,17 +7,29 @@
 //   daily: ascending [{date:'YYYY-MM-DD', open, high, low, close, volume}]
 //   intraday: ascending [{date:'YYYY-MM-DD HH:mm:ss', open, high, low, close, volume}] (ET timestamps)
 //   todayET: 'YYYY-MM-DD'
+//   quote: optional live-quote fallback for the premarket range, used when the
+//          bar feed lacks today's premarket (the production Polygon plan 403s on
+//          same-day intraday). { quoteHigh, quoteLow, isPremarket }. During
+//          premarket the Finnhub quote's session high/low IS the premarket range.
 // Output: levels object (all numbers rounded to 2dp)
 
-function computeLevels(daily, intraday, todayET) {
+function computeLevels(daily, intraday, todayET, quote) {
   const r2 = (x) => Math.round(x * 100) / 100;
+  const q = quote || {};
+  const quoteHigh = Number(q.quoteHigh) > 0 ? Number(q.quoteHigh) : null;
+  const quoteLow = Number(q.quoteLow) > 0 ? Number(q.quoteLow) : null;
+  const isPremarket = !!q.isPremarket;
 
   // ---- split intraday into premarket (today, <09:30 ET) and sessions ----
   const todayBars = intraday.filter((b) => b.date.slice(0, 10) === todayET);
   const pmBars = todayBars.filter((b) => b.date.slice(11, 16) < '09:30');
-  const pmHigh = pmBars.length ? Math.max(...pmBars.map((b) => b.high)) : null;
-  const pmLow = pmBars.length ? Math.min(...pmBars.map((b) => b.low)) : null;
+  let pmHigh = pmBars.length ? Math.max(...pmBars.map((b) => b.high)) : null;
+  let pmLow = pmBars.length ? Math.min(...pmBars.map((b) => b.low)) : null;
   const pmVolume = pmBars.reduce((s, b) => s + (b.volume || 0), 0);
+  // blend the live quote's premarket range when the bar feed has no today PM bars
+  let pmFromQuote = false;
+  if (isPremarket && quoteHigh !== null && (pmHigh === null || quoteHigh > pmHigh)) { pmHigh = quoteHigh; pmFromQuote = true; }
+  if (isPremarket && quoteLow !== null && (pmLow === null || quoteLow < pmLow)) { pmLow = quoteLow; }
 
   // most recent completed regular session = last daily bar strictly before today
   const priorDaily = daily.filter((b) => b.date < todayET);
@@ -45,6 +57,10 @@ function computeLevels(daily, intraday, todayET) {
     }
   }
   let confirm = pivots.length ? Math.max(...pivots) : null;
+  // on a large overnight gap the prior pivots sit far below the premarket
+  // trigger; prefer the premarket low when it is a tighter (higher) invalidation
+  // so the confirm tracks today's action rather than an ancient pivot
+  if (pmLow !== null && pmLow < trigger && (confirm === null || pmLow > confirm)) confirm = pmLow;
   // fallback chain (still deterministic): prior close if below trigger, else premarket low
   if (confirm === null && lastSession && lastSession.close < trigger) confirm = lastSession.close;
   if (confirm === null && pmLow !== null && pmLow < trigger) confirm = pmLow;
@@ -120,6 +136,7 @@ function computeLevels(daily, intraday, todayET) {
     pmVolume,
     confirmRespectCount: respects,
     triggerToConfirmPct: r2(((trigger - confirm) / trigger) * 100),
+    dataQuality: pmFromQuote ? 'bars+quote-pm' : 'bars',
   };
 }
 
@@ -226,6 +243,27 @@ function check(name, cond, detail) {
   const intraday = [{ date: '2026-01-14 08:00:00', open: 2.6, high: 3.1, low: 2.55, close: 3.0, volume: 90000 }];
   const lv = computeLevels(daily, intraday, today);
   check('c6 confirm snapped to 2.5', lv.confirm === 2.5, JSON.stringify(lv));
+}
+
+// Case 7: overnight gapper with NO today premarket bars (Polygon plan 403s on
+// same-day intraday) — the live Finnhub quote supplies the premarket range. The
+// trigger must reflect the premarket high (5.20), not yesterday's high (3.00),
+// so a name already trading at $4.80 is not handed a stale $3 breakout level.
+{
+  const daily = mkDaily([
+    [2.6, 2.3, 2.5], [2.8, 2.5, 2.7], [3.0, 2.7, 2.9], [2.95, 2.6, 2.75], [2.9, 2.55, 2.7],
+  ]);
+  const today = '2026-01-21';
+  const noPmBars = []; // plan returns nothing for today
+  const lv = computeLevels(daily, noPmBars, today, { quoteHigh: 5.2, quoteLow: 4.3, isPremarket: true });
+  check('c7 trigger=quote premarket high', lv.trigger === 5.2, JSON.stringify(lv));
+  check('c7 trigger above prior high', lv.trigger > 3.0, JSON.stringify(lv));
+  check('c7 confirm below trigger', lv.confirm < lv.trigger && lv.confirm > 0, JSON.stringify(lv));
+  check('c7 dataQuality flagged', lv.dataQuality === 'bars+quote-pm', JSON.stringify(lv));
+  // without the quote (or outside premarket) it falls back to the stale prior
+  // session high (2.9) — far below the real premarket price, the bug we fixed
+  const stale = computeLevels(daily, noPmBars, today);
+  check('c7 no-quote falls to prior high', stale.trigger === 2.9 && stale.dataQuality === 'bars', JSON.stringify(stale));
 }
 
 console.log(failures ? `\n${failures} FAILURES` : '\nall tests passed');

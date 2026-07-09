@@ -123,34 +123,57 @@ priced off Polygon 5-min bars for the prior trading day: AH move = last
 watch table (with AH volume, scan reason, linked catalyst); decliners ≤−3%
 print as an AH-reversal line — actual prices replacing the old headline
 regex. Names only, still not suggestions; nothing in the email is labeled
-premarket. The subject line's watch names come from real AH gainers.
+premarket. The subject line's watch names come from real AH gainers. The scan
+universe was broadened 9 Jul to also include the **top ~15 regular-session
+gainers** from the FMP list (the names most likely to keep moving after the
+bell), not just the small-cap-filtered gappers, so the section reflects the
+actual after-hours leaders rather than a narrow watch subset.
 
-## Premarket scan (Polygon) — 07:50/09:20 candidate source (added 7 Jul)
+## Premarket candidate source — Polygon plan reality (revised 9 Jul)
 
-The 07:50 and 09:20 workflows source candidates from `TRADE SUB – Premarket
-Scan` instead of the quote-based Fetch Movers (which stays in place for the
-03:50 prior-session recap and the 16:10 swing scan). The scan takes FMP's
-biggest-gainers list, applies the shared universe filter (funds, non-common
-share classes, loose price band), takes the top 10, and pulls per-symbol
-Polygon same-day 5-minute bars (15-min delayed on Starter) plus the previous
-close: premarket high/low/volume, last premarket print, **live gap = (PM last
-− prev close)/prev close**, and RVOL = PM volume / Finnhub 10-day average.
-Every field falls back to the FMP listed values when a Polygon call fails, so
-the scan output contract is identical to Fetch Movers and the mains degrade
-rather than break. The 09:20 email leads with a premarket top-gainers table
-(ticker, gap, price, PM high/low/vol, RVOL, grade, linked catalyst), then the
-cards. Known limitation, deliberate: gappers with no prior-session move that
-only started running in premarket are invisible to FMP's list — fixing that
-needs the Polygon snapshot entitlement (plan upgrade).
+The 07:50 and 09:20 workflows source candidates from **Fetch Movers** (FMP
+biggest-gainers → universe filter → Finnhub live quote + metric → gap
+re-filter). A `TRADE SUB – Premarket Scan` was built to enrich those names with
+Polygon same-day 5-minute bars, but **the Polygon key on this account is
+effectively free-tier**: the snapshot endpoints 403 (`NOT_AUTHORIZED`) and,
+critically, same-day/recent intraday aggregates 403 with *"Your plan doesn't
+include this data timeframe"*. So there is no live premarket bar data at all —
+the scan sub degraded every candidate to its FMP fallback and, worse, starved
+grading. 07:50 and 09:20 were repointed back to Fetch Movers, which gets the
+**live gap and premarket high/low from the Finnhub quote** (`h`/`l`/`c`/`pc`,
+all symbols, no entitlement wall). PM-volume/RVOL columns render "—" with a
+footnote — they need the intraday bars the plan lacks. (Prior-day intraday
+*is* allowed once it's >15 min old, which is why the 03:50 after-hours section
+still works.)
 
-Two content rules shipped in the same pass: a candidate card whose last price
-is **below its confirm level is not an active setup** — it is excluded from
-the suggested set and, when shown for transparency, carries an amber
-INVALIDATED banner; and the 07:50 cards read like a curated daily watchlist
+**Stale-levels fix (the big one, 9 Jul).** Because Compute Levels could not see
+today's premarket (same-day bars 403), the breakout trigger fell back to
+*yesterday's* high. For an overnight gapper that is far below the current
+price, so 09:20 was suggesting entries at levels the stock had already blown
+through by $4–5 — effectively yesterday's plan. Two-part fix: (a) Compute
+Levels now blends the **live Finnhub premarket high/low** (passed by the
+caller) into the trigger/confirm whenever bars lack today's premarket, tagged
+`dataQuality: bars+quote-pm`, so the trigger tracks today's actual premarket
+range; and (b) a hard guard in the 07:50/09:20 compose — if last price is
+already **more than 3% above the trigger**, the card is dropped from the
+suggested set and flagged **STALE LEVELS — do not chase** (mirrors the
+below-confirm INVALIDATED guard). A setup is only suggested when price sits
+between confirm and trigger, where the plan is still actionable.
+
+Grading was also hardened: the Anthropic response was truncating mid-JSON
+(extended-thinking tokens ate the budget) and returning U/ungradeable, which
+the compose reads as "data unavailable" — the model token cap was raised so
+real candidates grade instead of failing.
+
+Card rules: a card below its confirm level is excluded and carries an amber
+INVALIDATED banner; the 07:50 cards read like a curated daily watchlist
 (ticker + linked catalyst headline, "worth watching if price breaks above X
 and confirms above Y", range, chart pair) while 09:20 stays specific to
 gainers at the open. Factor reason lines print once per stock — on the card
-only; the gap list carries just the grade.
+only; the gap list carries just the grade. Deliberate open limitation:
+premarket-only gappers with no prior-session move are invisible to FMP's list,
+and a true market-wide premarket movers feed needs a paid Polygon snapshot
+entitlement.
 
 ## Level derivation (deterministic — the LLM never picks numbers)
 

@@ -101,33 +101,40 @@ dedupe guarantees one send per slot per day even if both fires pass.
 `Y0RpE6uOqsL1Aju2` · `congress_trades` `OiNedcvYkzQJ1Wnv` · `run_log`
 `3UGSUcR2CiON1iYu` · `positions` `PVdNOs7jNw5insN5`
 
+## The trading clock (adopted 13 Jul — "Arabian days")
+
+The user's trading day begins at the prior 16:00 close: after-hours is the
+opening session of the NEXT day, then the overnight gap, premarket, and the
+regular session close the day at 16:00. Every email shows the **current day**
+under this clock; anything from an earlier day is explicitly labeled prior.
+Concretely, at 03:50 Thursday: "current day" = Wednesday 16:00 → Thursday
+16:00, and the "prior US session" = Wednesday's regular hours + Wednesday's
+premarket + **Tuesday-evening** after-hours (the AH that opened Wednesday).
+
 ## 03:50 Overnight Brief — what it does (and deliberately doesn't)
 
-Sections: prior US session (indices, sector rotation, gainers/losers with
-linked attribution), overnight tape (Nikkei/Hang Seng/FTSE/DAX via FMP, BTC
-via Finnhub as risk proxy, treasury 2Y/10Y/2s10s via FMP — labeled proxies,
-no free US-futures feed), **after-hours movers** (see below), today's
-earnings + IPO calendars (Finnhub; econ releases are phase 2), long book,
-congressional placeholder, overnight news since 16:10 (3-day lookback on
-Mondays), positions. No cards, no grades, no table writes — the 03:50 email
-is context, not calls.
+Sections: **Prior US session** — indices, sector rotation, then three
+separate gainer lists for the day that just closed: regular hours 9:30–16:00
+(FMP top gainers/losers with linked attribution), premarket 4:00–9:30 (bar-
+computed vs the prior close), and the after-hours of the evening before
+16:00–20:00 (bar-computed); **Overnight tape** (Nikkei/Hang Seng/FTSE/DAX via
+FMP, BTC via Finnhub as risk proxy, treasury 2Y/10Y/2s10s — labeled proxies);
+**After-hours movers — current day** (see below); today's earnings + IPO
+calendars; long book; congressional placeholder; overnight news since 16:10;
+positions. No cards, no grades, no table writes — the 03:50 email is context,
+not calls.
 
-**After-hours movers (reworked 7 Jul):** at 03:50 ET premarket has not opened
-(it starts 04:00 ET), so the overnight watch list can only legitimately come
-from the prior session's after-hours tape — the original "premarket watch"
-re-listed prior-session close moves with only a headline-text check for AH
-reversals. Now a scan universe (prior-session gappers ∪ yesterday's
-after-the-bell earnings reporters ∪ overnight news names, capped at 15) is
-priced off Polygon 5-min bars for the prior trading day: AH move = last
-16:00–20:00 ET print vs the ~16:00 close. Gainers ≥3% are ranked into the
-watch table (with AH volume, scan reason, linked catalyst); decliners ≤−3%
-print as an AH-reversal line — actual prices replacing the old headline
-regex. Names only, still not suggestions; nothing in the email is labeled
-premarket. The subject line's watch names come from real AH gainers. The scan
-universe was broadened 9 Jul to also include the **top ~15 regular-session
-gainers** from the FMP list (the names most likely to keep moving after the
-bell), not just the small-cap-filtered gappers, so the section reflects the
-actual after-hours leaders rather than a narrow watch subset.
+**After-hours movers — current day:** the overnight watch list = the
+16:00–20:00 ET session that opened the current trading day (the market is
+closed 20:00–4:00, so at 03:50 this is the complete session). A scan universe
+(top ~15 FMP regular-session gainers ∪ small-cap gappers ∪ after-the-bell
+earnings reporters ∪ overnight news names, capped at 22) is priced off one
+Polygon 5-min fetch spanning the last two trading days — that single fetch
+also feeds the prior-premarket and prior-evening-AH lists above. Gainers ≥3%
+rank into the watch table (AH volume, scan reason, linked catalyst);
+decliners ≤−3% print as an AH-reversal line. Names only, not suggestions;
+nothing in this email is labeled premarket (premarket opens 04:00, after the
+pull).
 
 ## Premarket candidate source — Polygon plan reality (revised 9 Jul)
 
@@ -174,6 +181,25 @@ only; the gap list carries just the grade. Deliberate open limitation:
 premarket-only gappers with no prior-session move are invisible to FMP's list,
 and a true market-wide premarket movers feed needs a paid Polygon snapshot
 entitlement.
+
+## Current-day windows per email (13 Jul)
+
+- **07:50** — gap list titled *"Premarket gainers (4:00–07:50 ET, today)"*:
+  today's premarket gap vs prior close from live quotes. Cards as above.
+- **09:20** — leads with *"Premarket gainers (4:00–09:20 ET, today)"*; the
+  premarket-recap-vs-07:50 section was removed (it re-showed earlier data);
+  then the A-list into the open, avoid list, swing watch, news.
+- **16:10** — Day recap's mover lists are titled *"Regular hours top
+  gainers/losers (9:30–16:00 ET, today)"*. **Scorecard** grades today's 07:50
+  and 09:20 calls, resolved from the live quote's day high/low (same-day
+  intraday bars are plan-blocked; the footer notes that "reached" outcomes
+  are optimistic on ordering) — the old bar-based resolver returned
+  "unresolved" for everything on this plan. New **"First 10 minutes of
+  after-hours — top gainers (16:00–16:10 ET, today)"** board: last live print
+  (~16:10) vs the frozen close on today's gainers list, gainer universe only.
+  The swing section opens with an *Into premarket* line flagging each
+  suggested name's first-10-min AH move — holders/extenders are the likeliest
+  overnight continuations.
 
 ## Level derivation (deterministic — the LLM never picks numbers)
 

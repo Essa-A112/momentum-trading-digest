@@ -201,6 +201,43 @@ entitlement.
   suggested name's first-10-min AH move — holders/extenders are the likeliest
   overnight continuations.
 
+## Loosened premarket board filters (14 Jul — Webull parity, best effort)
+
+The 07:50/09:20 gainers board was hiding most of what Webull's premarket board
+shows: the old scan only surfaced gap ≥10%, price $1–$20, top 8. An audit of
+Mon 13 Jul confirmed the shown numbers were live and exact (GMM +147.0%
+recomputed to the tick) — the divergence was the filters plus FMP's Monday
+reverse-split artifact rows (+300–2500% fakes whose real Finnhub prices were
+$0.13–$0.50; the live-quote re-check correctly rejected all five).
+
+The fix separates **visibility** from **grading capacity**:
+
+- **Board (loosened)**: both mains now call Fetch Movers with `minGapPct 5`,
+  `priceMin 0.30`, `priceMax 100`, `maxCandidates 15`. Every name is still
+  live-quote verified (stale-quote and gap re-check unchanged), so split
+  artifacts stay suppressed. Section titles now read *"— >5% gap, $0.30–$100"*.
+- **Deep scan (unchanged)**: Split Candidates still forwards only 5 names to
+  levels + grading — email timing is unaffected — but ranks the classic
+  tradeable band ($1–$20, ≥10% gap) first so grading slots aren't spent on
+  sub-$1 names. Ungraded board rows show "—" in Grade with a footnote
+  ("listed for visibility, not graded"); their watchlist rows carry
+  `status: listed`.
+
+Remaining gap to true Webull parity is the universe itself: FMP's
+biggest-gainers list, not a market-wide scan — that still needs the paid
+Polygon snapshot plan.
+
+## n8n Cloud trial ended (14 Jul — outage)
+
+The n8n Cloud trial expired mid-morning Tue 14 Jul (~06:25 ET). Every
+scheduled execution after that fails instantly at the pre-execute hook with
+*"Your trial has ended. Upgrade now to keep automating"* — Tue's 03:50 went
+out, 07:50/09:20 did not (both cron fires errored in <100 ms; the positions
+poller too). The workflow definitions, published versions, and data tables are
+intact, and the editor/API still accept changes — only execution is blocked.
+Nothing to fix in the workflows; the account needs a paid n8n plan (or a
+migration to self-hosted n8n) for the digests to resume.
+
 ## Level derivation (deterministic — the LLM never picks numbers)
 
 Implemented and unit-tested in `src/levels.js` (13 assertions); the same code
